@@ -7,6 +7,8 @@ import { CandidateRankings } from "@/components/CandidateRankings";
 import { AnalysisResults } from "@/components/AnalysisResults";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Users, FileText, TrendingUp } from "lucide-react";
+import { analyzeResumes } from "@/utils/analysisEngine";
+import { useToast } from "@/hooks/use-toast";
 
 export interface Resume {
   id: string;
@@ -34,45 +36,61 @@ const Index = () => {
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentStep, setCurrentStep] = useState<'setup' | 'results'>('setup');
+  const { toast } = useToast();
 
   const handleAnalyze = async () => {
-    if (!jobDescription.trim() || resumes.length === 0) return;
+    if (!jobDescription.trim()) {
+      toast({
+        title: "Job Description Required",
+        description: "Please enter a job description before analyzing.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (resumes.length === 0) {
+      toast({
+        title: "No Resumes Uploaded",
+        description: "Please upload at least one resume to analyze.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (jobDescription.length < 100) {
+      toast({
+        title: "Job Description Too Short",
+        description: "Please provide a more detailed job description (minimum 100 characters) for better analysis.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     setIsAnalyzing(true);
     
-    // Simulate AI analysis - in real implementation, this would call OpenAI API
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    const mockResults: AnalysisResult[] = resumes.map((resume, index) => ({
-      resumeId: resume.id,
-      fileName: resume.fileName,
-      overallScore: Math.floor(Math.random() * 40) + 60, // 60-100 range
-      skillsMatch: Math.floor(Math.random() * 30) + 70,
-      experienceMatch: Math.floor(Math.random() * 35) + 65,
-      educationMatch: Math.floor(Math.random() * 25) + 75,
-      keyStrengths: [
-        "Strong technical background in required technologies",
-        "Relevant industry experience",
-        "Leadership and team management skills",
-        "Excellent communication abilities"
-      ].slice(0, Math.floor(Math.random() * 3) + 2),
-      gaps: [
-        "Limited experience with specific framework mentioned",
-        "Could benefit from additional certifications",
-        "No direct experience in the industry vertical"
-      ].slice(0, Math.floor(Math.random() * 2) + 1),
-      recommendation: index < 2 ? "Strong candidate - recommend for interview" : 
-                     index < 4 ? "Good candidate - consider for interview" : 
-                     "May not be the best fit for this role",
-      analysis: `This candidate shows ${index < 2 ? 'excellent' : index < 4 ? 'good' : 'moderate'} alignment with the job requirements. Their background in relevant technologies and experience level make them ${index < 2 ? 'a top choice' : index < 4 ? 'a viable option' : 'worth considering with reservations'} for this position.`
-    }));
-    
-    // Sort by overall score
-    mockResults.sort((a, b) => b.overallScore - a.overallScore);
-    
-    setAnalysisResults(mockResults);
-    setIsAnalyzing(false);
-    setCurrentStep('results');
+    try {
+      // Add a realistic delay to simulate processing
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      
+      // Use the enhanced analysis engine
+      const results = analyzeResumes(resumes, jobDescription);
+      
+      setAnalysisResults(results);
+      setCurrentStep('results');
+      
+      toast({
+        title: "Analysis Complete",
+        description: `Successfully analyzed ${results.length} resume${results.length > 1 ? 's' : ''}.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Analysis Failed",
+        description: "There was an error analyzing the resumes. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleStartOver = () => {
@@ -80,7 +98,13 @@ const Index = () => {
     setJobDescription("");
     setResumes([]);
     setAnalysisResults([]);
+    toast({
+      title: "New Analysis Started",
+      description: "Ready for a new analysis session.",
+    });
   };
+
+  const canAnalyze = jobDescription.trim().length >= 100 && resumes.length > 0;
 
   if (currentStep === 'results') {
     return (
@@ -90,7 +114,9 @@ const Index = () => {
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-3xl font-bold text-slate-800 mb-2">Analysis Results</h1>
-              <p className="text-slate-600">AI-powered candidate ranking and insights</p>
+              <p className="text-slate-600">
+                AI-powered analysis of {analysisResults.length} candidate{analysisResults.length > 1 ? 's' : ''}
+              </p>
             </div>
             <Button onClick={handleStartOver} variant="outline" className="flex items-center gap-2">
               <FileText className="w-4 h-4" />
@@ -155,14 +181,18 @@ const Index = () => {
         <div className="text-center">
           <Button
             onClick={handleAnalyze}
-            disabled={!jobDescription.trim() || resumes.length === 0 || isAnalyzing}
+            disabled={!canAnalyze || isAnalyzing}
             size="lg"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+            className={`px-8 py-3 text-lg font-medium rounded-xl shadow-lg transition-all duration-200 ${
+              canAnalyze 
+                ? 'bg-blue-600 hover:bg-blue-700 text-white hover:shadow-xl' 
+                : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+            }`}
           >
             {isAnalyzing ? (
               <>
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                Analyzing Candidates...
+                Analyzing {resumes.length} Resume{resumes.length > 1 ? 's' : ''}...
               </>
             ) : (
               <>
@@ -172,11 +202,22 @@ const Index = () => {
             )}
           </Button>
           
-          {(!jobDescription.trim() || resumes.length === 0) && (
-            <p className="text-slate-500 mt-3">
-              Please add a job description and upload at least one resume to begin analysis
-            </p>
-          )}
+          <div className="mt-4 space-y-2">
+            {!jobDescription.trim() && (
+              <p className="text-red-500 text-sm">⚠️ Job description is required</p>
+            )}
+            {jobDescription.trim() && jobDescription.length < 100 && (
+              <p className="text-yellow-600 text-sm">
+                ⚠️ Job description should be at least 100 characters ({jobDescription.length}/100)
+              </p>
+            )}
+            {resumes.length === 0 && (
+              <p className="text-red-500 text-sm">⚠️ At least one resume is required</p>
+            )}
+            {canAnalyze && (
+              <p className="text-green-600 text-sm">✅ Ready to analyze!</p>
+            )}
+          </div>
         </div>
       </div>
     </div>
